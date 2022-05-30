@@ -24,4 +24,16 @@ export const connectDb = async () => {
   await pool.connect();
 
   console.log(`^^ db connected`);
+
+  await initOnce();
 };
+
+async function initOnce() {
+  await pool.query(`
+    create table if not exists users (
+      id serial primary key, 
+      email varchar(50) not null unique, 
+      password varchar(255) not null
+    )
+  `);
+}
