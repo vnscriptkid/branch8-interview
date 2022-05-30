@@ -36,4 +36,17 @@ async function initOnce() {
       password varchar(255) not null
     )
   `);
+
+  await pool.query(`
+      create table if not exists sessions (
+        id serial primary key,
+        session_token varchar(255) not null unique,
+        user_id int not null references users(id),
+        ip varchar(255) not null,
+        user_agent varchar(100) not null,
+        updated_at bigint default extract(epoch from current_timestamp),
+        created_at bigint default extract(epoch from current_timestamp),
+        valid bool not null default false
+      )
+  `);
 }

@@ -1,5 +1,8 @@
+import cookieParser from "cookie-parser";
 import express, { NextFunction, Request, Response } from "express";
 import bcryptjs, { compare } from "bcryptjs";
+import crypto from "crypto";
+import jwt from "jsonwebtoken";
 
 import "express-async-errors";
 
@@ -8,9 +11,24 @@ import { connectDb, pool } from "./db";
 const app = express();
 
 app.use(express.json());
+app.use(cookieParser());
 
 app.get("/api/status", (req, res) => {
+  res.cookie("test", JSON.stringify({ hello: true }), {
+    httpOnly: true,
+    domain: "localhost",
+    secure: process.env.NODE_ENV === "production",
+  });
+
   return res.send({ alive: true });
+});
+
+app.get("/api/guest", (req, res) => {
+  console.log(req.cookies);
+  console.log(req.headers["user-agent"]);
+  console.log(req.ip);
+
+  return res.send({ guestSite: true });
 });
 
 app.post("/api/auth/register", async (req, res) => {
@@ -59,11 +77,59 @@ app.post("/api/auth/login", async (req, res) => {
   if (!isPasswordCorrect)
     return res.status(400).send({ error: `password is wrong` });
 
+  // create session
+  const [sessionToken, userId, ip, userAgent] = [
+    crypto.randomBytes(43).toString("hex"),
+    rows[0].id,
+    req.ip,
+    req.headers["user-agent"],
+  ];
+  const {
+    rows: [session],
+  } = await pool.query({
+    text: `insert into sessions (session_token, user_id, ip, user_agent, valid) values ($1, $2, $3, $4, true) returning *;`,
+    values: [sessionToken, userId, ip, userAgent],
+  });
+
+  // create jwt
+  const JWT_SECRET = "very-hard-to-guess";
+  const refreshToken = jwt.sign(
+    {
+      sessionId: session.session_token,
+    },
+    JWT_SECRET
+  );
+
+  const accessToken = jwt.sign(
+    {
+      sessionId: session.session_token,
+      userId: userId,
+    },
+    JWT_SECRET
+  );
+
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
+    domain: "localhost",
+    path: "/",
+    secure: process.env.NODE_ENV === "production",
+    expires: new Date(new Date().setDate(new Date().getDate() + 30)),
+  });
+
+  res.cookie("accessToken", accessToken, {
+    httpOnly: true,
+    domain: "localhost",
+    path: "/",
+    secure: process.env.NODE_ENV === "production",
+  });
+
   return res.status(200).send({
     user: {
       id: rows[0].id,
       email: rows[0].email,
     },
+    refreshToken,
+    accessToken,
   });
 });
 
