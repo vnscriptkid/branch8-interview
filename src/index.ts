@@ -1,5 +1,5 @@
 import cookieParser from "cookie-parser";
-import express, { NextFunction, Request, Response } from "express";
+import express, { NextFunction, query, Request, Response } from "express";
 import bcryptjs, { compare } from "bcryptjs";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
@@ -13,6 +13,34 @@ const app = express();
 app.use(express.json());
 app.use(cookieParser());
 
+const JWT_SECRET = "very-hard-to-guess";
+
+app.get("/api/guard", async (req, res) => {
+  const accessToken = req.cookies?.accessToken;
+
+  if (!accessToken)
+    return res.status(400).send({ error: `accessToken not found in cookie` });
+
+  let decoded: any;
+
+  try {
+    decoded = jwt.verify(accessToken, JWT_SECRET);
+
+    console.log({ decoded });
+  } catch (err) {
+    return res.status(400).send({ error: `accessToken invalid` });
+  }
+
+  const { rows, rowCount } = await pool.query({
+    text: `select * from users where id = $1`,
+    values: [decoded?.userId],
+  });
+
+  if (rowCount === 0) return res.status(400).send({ error: `user not found` });
+
+  return res.status(200).send({ data: rows[0] });
+});
+
 app.get("/api/status", (req, res) => {
   res.cookie("test", JSON.stringify({ hello: true }), {
     httpOnly: true,
@@ -21,6 +49,13 @@ app.get("/api/status", (req, res) => {
   });
 
   return res.send({ alive: true });
+});
+
+app.get("/api/auth/logout", (req, res) => {
+  res.clearCookie("accessToken");
+  res.clearCookie("refreshToken");
+
+  return res.send({ done: true });
 });
 
 app.get("/api/guest", (req, res) => {
@@ -92,7 +127,7 @@ app.post("/api/auth/login", async (req, res) => {
   });
 
   // create jwt
-  const JWT_SECRET = "very-hard-to-guess";
+
   const refreshToken = jwt.sign(
     {
       sessionId: session.session_token,
