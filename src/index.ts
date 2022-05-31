@@ -7,6 +7,7 @@ import jwt from "jsonwebtoken";
 import "express-async-errors";
 
 import { connectDb, pool } from "./db";
+import { createTokens, setTokensToCookies } from "./utils";
 
 const app = express();
 
@@ -14,6 +15,10 @@ app.use(express.json());
 app.use(cookieParser());
 
 const JWT_SECRET = "very-hard-to-guess";
+
+enum PgErrors {
+  UniqueViolation = "23505",
+}
 
 app.get("/api/guard", async (req, res) => {
   const accessToken = req.cookies?.accessToken;
@@ -42,12 +47,6 @@ app.get("/api/guard", async (req, res) => {
 });
 
 app.get("/api/status", (req, res) => {
-  res.cookie("test", JSON.stringify({ hello: true }), {
-    httpOnly: true,
-    domain: "localhost",
-    secure: process.env.NODE_ENV === "production",
-  });
-
   return res.send({ alive: true });
 });
 
@@ -59,10 +58,6 @@ app.get("/api/auth/logout", (req, res) => {
 });
 
 app.get("/api/guest", (req, res) => {
-  console.log(req.cookies);
-  console.log(req.headers["user-agent"]);
-  console.log(req.ip);
-
   return res.send({ guestSite: true });
 });
 
@@ -82,7 +77,7 @@ app.post("/api/auth/register", async (req, res) => {
       values: [email, hashedPassword],
     });
   } catch (err: any) {
-    if (err.code === "23505") {
+    if (err.code === PgErrors.UniqueViolation) {
       return res.status(400).send({ error: `email already exists` });
     }
 
@@ -126,37 +121,12 @@ app.post("/api/auth/login", async (req, res) => {
     values: [sessionToken, userId, ip, userAgent],
   });
 
-  // create jwt
-
-  const refreshToken = jwt.sign(
-    {
-      sessionId: session.session_token,
-    },
-    JWT_SECRET
+  const { accessToken, refreshToken } = createTokens(
+    session.session_token,
+    userId
   );
 
-  const accessToken = jwt.sign(
-    {
-      sessionId: session.session_token,
-      userId: userId,
-    },
-    JWT_SECRET
-  );
-
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    domain: "localhost",
-    path: "/",
-    secure: process.env.NODE_ENV === "production",
-    expires: new Date(new Date().setDate(new Date().getDate() + 30)),
-  });
-
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    domain: "localhost",
-    path: "/",
-    secure: process.env.NODE_ENV === "production",
-  });
+  setTokensToCookies(res, accessToken, refreshToken);
 
   return res.status(200).send({
     user: {
