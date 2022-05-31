@@ -7,43 +7,19 @@ import jwt from "jsonwebtoken";
 import "express-async-errors";
 
 import { connectDb, pool } from "./db";
-import { createTokens, setTokensToCookies } from "./utils";
+import { createTokens, requireAuth, setTokensToCookies } from "./utils";
 
 const app = express();
 
 app.use(express.json());
 app.use(cookieParser());
 
-const JWT_SECRET = "very-hard-to-guess";
-
 enum PgErrors {
   UniqueViolation = "23505",
 }
 
-app.get("/api/guard", async (req, res) => {
-  const accessToken = req.cookies?.accessToken;
-
-  if (!accessToken)
-    return res.status(400).send({ error: `accessToken not found in cookie` });
-
-  let decoded: any;
-
-  try {
-    decoded = jwt.verify(accessToken, JWT_SECRET);
-
-    console.log({ decoded });
-  } catch (err) {
-    return res.status(400).send({ error: `accessToken invalid` });
-  }
-
-  const { rows, rowCount } = await pool.query({
-    text: `select * from users where id = $1`,
-    values: [decoded?.userId],
-  });
-
-  if (rowCount === 0) return res.status(400).send({ error: `user not found` });
-
-  return res.status(200).send({ data: rows[0] });
+app.get("/api/guard", requireAuth, async (req, res) => {
+  return res.status(200).send({ data: "only auth user can see" });
 });
 
 app.get("/api/status", (req, res) => {
