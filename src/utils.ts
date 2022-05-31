@@ -4,25 +4,11 @@ import { pool } from "./db";
 
 const JWT_SECRET = "very-hard-to-guess";
 
-export function createTokens(sessionToken: any, userId: string) {
-  const refreshToken = jwt.sign(
-    {
-      sessionId: sessionToken,
-    },
-    JWT_SECRET,
-    { algorithm: "HS256", expiresIn: "30d" }
-  );
-
-  const accessToken = jwt.sign(
-    {
-      sessionId: sessionToken,
-      userId: userId,
-    },
-    JWT_SECRET,
-    { algorithm: "HS256", expiresIn: "1h" }
-  );
-
-  return { accessToken, refreshToken };
+export function createTokens(sessionToken: string, userId: string) {
+  return {
+    accessToken: createAccessToken(sessionToken, userId),
+    refreshToken: createRefreshToken(sessionToken),
+  };
 }
 
 export function setTokensToCookies(
@@ -98,14 +84,25 @@ async function tryRefreshToken(refreshToken: string): Promise<string | null> {
     return null;
   }
 
-  const accessToken = jwt.sign(
+  return createAccessToken(session.session_token, session.user_id);
+}
+function createAccessToken(sessionToken: string, userId: string) {
+  return jwt.sign(
     {
-      sessionId: session.session_token,
-      userId: session.user_id,
+      sessionId: sessionToken,
+      userId: userId,
     },
     JWT_SECRET,
     { algorithm: "HS256", expiresIn: "1h" }
   );
+}
 
-  return accessToken;
+function createRefreshToken(sessionToken: string) {
+  return jwt.sign(
+    {
+      sessionId: sessionToken,
+    },
+    JWT_SECRET,
+    { algorithm: "HS256", expiresIn: "30d" }
+  );
 }
