@@ -1,6 +1,9 @@
-import { NextFunction, Response } from "express";
+import { Response } from "express";
 import jwt from "jsonwebtoken";
+import bcryptjs from "bcryptjs";
+
 import { pool } from "./db";
+import { JWT_ALGO } from "./constants";
 
 const JWT_SECRET = "very-hard-to-guess";
 
@@ -9,6 +12,10 @@ export function createTokens(sessionToken: string, userId: string) {
     accessToken: createAccessToken(sessionToken, userId),
     refreshToken: createRefreshToken(sessionToken),
   };
+}
+
+function daysFromNow(days: number): Date {
+  return new Date(new Date().setDate(new Date().getDate() + days));
 }
 
 export function setTokensToCookies(
@@ -21,7 +28,7 @@ export function setTokensToCookies(
     domain: "localhost",
     path: "/",
     secure: process.env.NODE_ENV === "production",
-    expires: new Date(new Date().setDate(new Date().getDate() + 30)),
+    expires: daysFromNow(30),
   });
 
   res.cookie("accessToken", accessToken, {
@@ -32,34 +39,13 @@ export function setTokensToCookies(
   });
 }
 
-export async function requireAuth(req: any, res: Response, next: NextFunction) {
-  const { accessToken, refreshToken } = req.cookies || {};
-
-  if (!accessToken)
-    return res.status(400).send({ error: `accessToken not found in cookie` });
-
-  let decoded: any;
-
-  try {
-    decoded = jwt.verify(accessToken, JWT_SECRET);
-  } catch (err) {
-    // Refresh token if it's expired
-    if ((err as any).name === "TokenExpiredError" && refreshToken) {
-      const newAccessToken = await tryRefreshToken(refreshToken);
-
-      if (!newAccessToken)
-        return res.send(400).send({ error: `refreshToken is invalid` });
-
-      setTokensToCookies(res, newAccessToken, refreshToken);
-    }
-    // If not expired, consider as invalid
-    else {
-      return res.status(400).send({ error: `accessToken is invalid` });
-    }
-  }
-}
-
-async function tryRefreshToken(refreshToken: string): Promise<string | null> {
+/*
+ * Create new accessToken using current refreshToken
+ * Return null if can't make new accessToken
+ */
+export async function tryRefreshToken(
+  refreshToken: string
+): Promise<string | null> {
   let decoded: any = null;
 
   try {
@@ -86,6 +72,7 @@ async function tryRefreshToken(refreshToken: string): Promise<string | null> {
 
   return createAccessToken(session.session_token, session.user_id);
 }
+
 function createAccessToken(sessionToken: string, userId: string) {
   return jwt.sign(
     {
@@ -93,7 +80,7 @@ function createAccessToken(sessionToken: string, userId: string) {
       userId: userId,
     },
     JWT_SECRET,
-    { algorithm: "HS256", expiresIn: "1h" }
+    { algorithm: JWT_ALGO, expiresIn: "1h" }
   );
 }
 
@@ -103,6 +90,14 @@ function createRefreshToken(sessionToken: string) {
       sessionId: sessionToken,
     },
     JWT_SECRET,
-    { algorithm: "HS256", expiresIn: "30d" }
+    { algorithm: JWT_ALGO, expiresIn: "30d" }
   );
+}
+
+export async function hashPassword(plainPassword: string) {
+  const salt = await bcryptjs.genSalt(10);
+
+  const hashedPassword = await bcryptjs.hash(plainPassword, salt);
+
+  return hashedPassword;
 }

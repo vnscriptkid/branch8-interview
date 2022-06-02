@@ -1,22 +1,19 @@
 import cookieParser from "cookie-parser";
-import express, { NextFunction, query, Request, Response } from "express";
-import bcryptjs, { compare } from "bcryptjs";
-import crypto from "crypto";
+import express from "express";
+import { compare } from "bcryptjs";
 
 import "express-async-errors";
 
-import { pool } from "./db";
-import { createTokens, requireAuth, setTokensToCookies } from "./utils";
+import { createTokens, setTokensToCookies } from "./utils";
+import { EmailAlreadyExists } from "./errors";
+import { globalErrorHandler, requireAuth } from "./middlewares";
+import { createSession, createUser, findUserByEmail } from "./queries";
 
 export const startServer = () => {
   const app = express();
 
   app.use(express.json());
   app.use(cookieParser());
-
-  enum PgErrors {
-    UniqueViolation = "23505",
-  }
 
   app.get("/api/guard", requireAuth, async (req, res) => {
     return res.status(200).send({ data: "only auth user can see" });
@@ -43,21 +40,13 @@ export const startServer = () => {
     if (!email || !password)
       return res.status(400).send({ error: `email or password are missing` });
 
-    const salt = await bcryptjs.genSalt(10);
-
-    const hashedPassword = await bcryptjs.hash(password, salt);
-
     try {
-      await pool.query({
-        text: `insert into users (email, password) values ($1, $2)`,
-        values: [email, hashedPassword],
-      });
+      await createUser(email, password);
     } catch (err: any) {
-      if (err.code === PgErrors.UniqueViolation) {
+      if (err instanceof EmailAlreadyExists)
         return res.status(400).send({ error: `email already exists` });
-      }
 
-      throw err;
+      return res.status(500).send({ error: err.message });
     }
 
     return res.status(201).send({ message: "success" });
@@ -69,59 +58,37 @@ export const startServer = () => {
     if (!email || !password)
       return res.status(400).send({ error: `email or password are missing` });
 
-    const { rowCount, rows } = await pool.query({
-      text: `select * from users where email = $1`,
-      values: [email],
-    });
+    const user = await findUserByEmail(email);
 
-    if (rowCount === 0)
-      return res.status(400).send({ error: `email not found` });
+    if (!user) return res.status(400).send({ error: `email is invalid` });
 
-    const hashedPassword = rows[0].password;
-
-    const isPasswordCorrect = await compare(password, hashedPassword);
+    const isPasswordCorrect = await compare(password, user.password);
 
     if (!isPasswordCorrect)
       return res.status(400).send({ error: `password is wrong` });
 
-    // create session
-    const [sessionToken, userId, ip, userAgent] = [
-      crypto.randomBytes(43).toString("hex"),
-      rows[0].id,
-      req.ip,
-      req.headers["user-agent"],
-    ];
-    const {
-      rows: [session],
-    } = await pool.query({
-      text: `insert into sessions (session_token, user_id, ip, user_agent, valid) values ($1, $2, $3, $4, true) returning *;`,
-      values: [sessionToken, userId, ip, userAgent],
+    const session = await createSession({
+      userId: user.id,
+      ip: req.ip,
+      userAgent: req.headers["user-agent"]!,
     });
 
     const { accessToken, refreshToken } = createTokens(
       session.session_token,
-      userId
+      user.id
     );
 
     setTokensToCookies(res, accessToken, refreshToken);
 
     return res.status(200).send({
       user: {
-        id: rows[0].id,
-        email: rows[0].email,
+        id: user.id,
+        email: user.email,
       },
-      refreshToken,
-      accessToken,
     });
   });
 
-  app.get("/api/auth/me", async (req, res) => {
-    return res.send({ done: true });
-  });
-
-  app.use((error: any, req: Request, res: Response, next: NextFunction) => {
-    res.status(500).send({ error });
-  });
+  app.use(globalErrorHandler);
 
   return new Promise((resolve) => {
     const PORT = 8085;
