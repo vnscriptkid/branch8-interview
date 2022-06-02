@@ -1,3 +1,5 @@
+require("dotenv").config();
+
 import { startServer } from "./startServer";
 import { connectDb } from "./db";
 

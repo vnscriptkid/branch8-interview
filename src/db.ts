@@ -4,11 +4,11 @@ export let pool: Pool;
 
 export const connectDb = async () => {
   pool = new Pool({
-    host: "localhost",
-    port: 5432,
-    user: "postgres",
-    password: "123456",
-    database: "auth",
+    host: process.env.DB_HOST || "localhost",
+    port: Number(process.env.DB_PORT) || 5432,
+    user: process.env.DB_USER || "postgres",
+    password: process.env.DB_PASSWORD || "123456",
+    database: process.env.DB_NAME || "auth",
     // number of milliseconds to wait before timing out when connecting a new client
     // by default this is 0 which means no timeout
     connectionTimeoutMillis: 0,

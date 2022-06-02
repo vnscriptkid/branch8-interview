@@ -4,8 +4,6 @@ import { JwtErrors } from "./errors";
 
 import { setTokensToCookies, tryRefreshToken } from "./utils";
 
-const JWT_SECRET = "very-hard-to-guess";
-
 export const globalErrorHandler = (
   error: Error,
   req: Request,
@@ -24,7 +22,7 @@ export async function requireAuth(req: any, res: Response, next: NextFunction) {
   let decoded: any;
 
   try {
-    decoded = jwt.verify(accessToken, JWT_SECRET);
+    decoded = jwt.verify(accessToken, process.env.JWT_SECRET!);
   } catch (err: any) {
     // Refresh token if it's expired
     if (err.name === JwtErrors.Expired && refreshToken) {

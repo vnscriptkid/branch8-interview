@@ -91,10 +91,9 @@ export const startServer = () => {
   app.use(globalErrorHandler);
 
   return new Promise((resolve) => {
-    const PORT = 8085;
-
-    const server = app.listen(PORT, async () => {
-      console.log(`server is listening on port ${PORT}`);
+    const port = process.env.PORT || 8085;
+    const server = app.listen(port, async () => {
+      console.log(`server is listening on port ${port}`);
       resolve(server);
     });
   });

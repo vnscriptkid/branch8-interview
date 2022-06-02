@@ -5,8 +5,6 @@ import bcryptjs from "bcryptjs";
 import { pool } from "./db";
 import { JWT_ALGO } from "./constants";
 
-const JWT_SECRET = "very-hard-to-guess";
-
 export function createTokens(sessionToken: string, userId: string) {
   return {
     accessToken: createAccessToken(sessionToken, userId),
@@ -49,7 +47,7 @@ export async function tryRefreshToken(
   let decoded: any = null;
 
   try {
-    decoded = jwt.verify(refreshToken, JWT_SECRET);
+    decoded = jwt.verify(refreshToken, process.env.JWT_SECRET!);
   } catch (err) {
     console.error(`!! failed to verify refreshToken`, err);
     return null;
@@ -79,7 +77,7 @@ function createAccessToken(sessionToken: string, userId: string) {
       sessionId: sessionToken,
       userId: userId,
     },
-    JWT_SECRET,
+    process.env.JWT_SECRET!,
     { algorithm: JWT_ALGO, expiresIn: "1h" }
   );
 }
@@ -89,7 +87,7 @@ function createRefreshToken(sessionToken: string) {
     {
       sessionId: sessionToken,
     },
-    JWT_SECRET,
+    process.env.JWT_SECRET!,
     { algorithm: JWT_ALGO, expiresIn: "30d" }
   );
 }
