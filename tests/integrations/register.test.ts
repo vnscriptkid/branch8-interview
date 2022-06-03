@@ -70,4 +70,25 @@ describe("register", () => {
 
     expect(rowCount).toEqual(0);
   });
+
+  test("duplicate email", async () => {
+    /* Arrange */
+    await request(server).post("/api/auth/register").send({
+      email: "example@gmail.com",
+      password: "123456",
+    });
+
+    /* ACTION */
+    const res = await request(server).post("/api/auth/register").send({
+      email: "example@gmail.com",
+      password: "123456",
+    });
+
+    /* ASSERT */
+    expect(res.body).toEqual({ error: "email already exists" });
+
+    const { rowCount } = await pool.query(`select * from users;`);
+
+    expect(rowCount).toEqual(1);
+  });
 });
