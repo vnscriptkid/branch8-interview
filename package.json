@@ -5,7 +5,7 @@
   "license": "MIT",
   "scripts": {
     "start": "ts-node-dev src/index.ts",
-    "test": "jest --runInBand --watchAll"
+    "test": "jest --runInBand"
   },
   "dependencies": {
     "axios": "^0.27.2",

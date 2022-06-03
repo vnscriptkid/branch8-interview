@@ -1,11 +1,9 @@
-import axios from "axios";
 import { connectDb, initOnce, pool } from "../../src/db";
 import { startServer } from "../../src/startServer";
 import { cleanUpDb } from "../utils/db";
 import request from "supertest";
 
-let server: any = null,
-  baseURL: string;
+let server: any = null;
 
 beforeEach(async () => {
   await cleanUpDb();
@@ -15,11 +13,15 @@ beforeEach(async () => {
 beforeAll(async () => {
   await connectDb();
   server = await startServer();
-  baseURL = `http://localhost:${process.env.PORT}/api/auth/register`;
 });
 
-beforeAll(async () => {
-  await server.close();
+// afterAll(async () => {
+//   if (pool) await pool.end();
+//   if (server) await server.close();
+// });
+
+afterAll(() => {
+  server.close();
 });
 
 describe("register", () => {
