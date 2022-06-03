@@ -8,7 +8,7 @@ export const connectDb = async () => {
     port: Number(process.env.DB_PORT) || 5432,
     user: process.env.DB_USER || "postgres",
     password: process.env.DB_PASSWORD || "123456",
-    database: process.env.DB_NAME || "auth",
+    database: process.env.DB_NAME || "auth_test",
     // number of milliseconds to wait before timing out when connecting a new client
     // by default this is 0 which means no timeout
     connectionTimeoutMillis: 0,
@@ -28,7 +28,7 @@ export const connectDb = async () => {
   await initOnce();
 };
 
-async function initOnce() {
+export async function initOnce() {
   await pool.query(`
     create table if not exists users (
       id serial primary key, 
