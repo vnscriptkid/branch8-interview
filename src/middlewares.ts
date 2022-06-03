@@ -1,8 +1,6 @@
 import { NextFunction, Request, Response } from "express";
-import jwt from "jsonwebtoken";
-import { JwtErrors } from "./errors";
 
-import { setTokensToCookies, tryRefreshToken } from "./utils";
+import { setTokensToCookies, tryRefreshToken, verifyJwt } from "./utils";
 
 export const globalErrorHandler = (
   error: Error,
@@ -14,30 +12,49 @@ export const globalErrorHandler = (
 };
 
 export async function requireAuth(req: any, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(403).send({ error: `You are not authorized` });
+  }
+
+  next();
+}
+
+export async function deserializeUser(
+  req: any,
+  res: Response,
+  next: NextFunction
+) {
   const { accessToken, refreshToken } = req.cookies || {};
 
-  if (!accessToken)
-    return res.status(400).send({ error: `accessToken not found in cookie` });
+  if (!accessToken) return next();
 
-  let decoded: any;
+  const { decoded, expired } = verifyJwt(accessToken);
 
-  try {
-    decoded = jwt.verify(accessToken, process.env.JWT_SECRET!);
-  } catch (err: any) {
-    // Refresh token if it's expired
-    if (err.name === JwtErrors.Expired && refreshToken) {
-      const newAccessToken = await tryRefreshToken(refreshToken);
+  if (decoded) {
+    console.log(`@@ token valid`);
+    attachUserToReq(req, decoded);
 
-      if (!newAccessToken)
-        return res.send(400).send({ error: `refreshToken is invalid` });
+    return next();
+  }
+
+  if (expired && refreshToken) {
+    const newAccessToken = await tryRefreshToken(refreshToken);
+
+    if (newAccessToken) {
+      const { decoded } = verifyJwt(accessToken);
+
+      attachUserToReq(req, decoded);
 
       setTokensToCookies(res, newAccessToken, refreshToken);
-    }
-    // If not expired, consider as invalid
-    else {
-      return res.status(400).send({ error: `accessToken is invalid` });
+      console.log(`^^ token got revoked`);
     }
   }
 
   next();
+}
+
+function attachUserToReq(req: any, decoded: any) {
+  req.user = {
+    userId: decoded?.userId,
+  };
 }

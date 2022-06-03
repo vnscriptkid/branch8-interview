@@ -1,12 +1,17 @@
 import cookieParser from "cookie-parser";
 import express from "express";
 import { compare } from "bcryptjs";
+import path from "path";
 
 import "express-async-errors";
 
 import { createTokens, setTokensToCookies } from "./utils";
 import { EmailAlreadyExists } from "./errors";
-import { globalErrorHandler, requireAuth } from "./middlewares";
+import {
+  deserializeUser,
+  globalErrorHandler,
+  requireAuth,
+} from "./middlewares";
 import { createSession, createUser, findUserByEmail } from "./queries";
 
 export const startServer = () => {
@@ -14,24 +19,32 @@ export const startServer = () => {
 
   app.use(express.json());
   app.use(cookieParser());
+  app.use(deserializeUser);
 
-  app.get("/api/guard", requireAuth, async (req, res) => {
-    return res.status(200).send({ data: "only auth user can see" });
+  app.get("/", function (req, res) {
+    res.sendFile(path.join(__dirname, "../public", "index.html"));
   });
 
+  // HEALTH CHECK
   app.get("/api/status", (req, res) => {
     return res.send({ alive: true });
   });
 
+  // PPL AREAS
+  app.get("/api/guard", requireAuth, async (req, res) => {
+    return res.status(200).send({ data: "only auth user can see" });
+  });
+
+  app.get("/api/guest", (req, res) => {
+    return res.send({ guestSite: true });
+  });
+
+  // AUTH ROUTES
   app.get("/api/auth/logout", (req, res) => {
     res.clearCookie("accessToken");
     res.clearCookie("refreshToken");
 
     return res.send({ done: true });
-  });
-
-  app.get("/api/guest", (req, res) => {
-    return res.send({ guestSite: true });
   });
 
   app.post("/api/auth/register", async (req, res) => {
@@ -44,7 +57,7 @@ export const startServer = () => {
       await createUser(email, password);
     } catch (err: any) {
       if (err instanceof EmailAlreadyExists)
-        return res.status(400).send({ error: `email already exists` });
+        return res.status(400).send({ error: err.message });
 
       return res.status(500).send({ error: err.message });
     }

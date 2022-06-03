@@ -49,3 +49,15 @@ export async function createSession({
 
   return session;
 }
+
+export async function findValidSession(sessionId: string) {
+  const {
+    rows: [session],
+    rowCount,
+  } = await pool.query({
+    text: `select * from sessions where session_token = $1 and valid = true;`,
+    values: [sessionId],
+  });
+
+  return rowCount === 0 ? null : session;
+}

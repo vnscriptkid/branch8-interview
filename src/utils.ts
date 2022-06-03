@@ -2,8 +2,9 @@ import { Response } from "express";
 import jwt from "jsonwebtoken";
 import bcryptjs from "bcryptjs";
 
-import { pool } from "./db";
 import { JWT_ALGO } from "./constants";
+import { JwtErrors } from "./errors";
+import { findValidSession } from "./queries";
 
 export function createTokens(sessionToken: string, userId: string) {
   return {
@@ -12,29 +13,28 @@ export function createTokens(sessionToken: string, userId: string) {
   };
 }
 
-function daysFromNow(days: number): Date {
-  return new Date(new Date().setDate(new Date().getDate() + days));
-}
-
 export function setTokensToCookies(
   res: Response,
   accessToken: string,
-  refreshToken: string
+  refreshToken?: string
 ) {
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    domain: "localhost",
-    path: "/",
-    secure: process.env.NODE_ENV === "production",
-    expires: daysFromNow(30),
-  });
+  if (refreshToken) {
+    res.cookie("accessToken", accessToken, {
+      httpOnly: true,
+      domain: "localhost",
+      path: "/",
+      secure: process.env.NODE_ENV === "production",
+      // maxAge: 3600 * 1000, // 1 hour
+    });
 
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    domain: "localhost",
-    path: "/",
-    secure: process.env.NODE_ENV === "production",
-  });
+    res.cookie("refreshToken", refreshToken, {
+      httpOnly: true,
+      domain: "localhost",
+      path: "/",
+      secure: process.env.NODE_ENV === "production",
+      maxAge: 30 * 24 * 3600 * 1000, // 30 days
+    });
+  }
 }
 
 /*
@@ -44,29 +44,13 @@ export function setTokensToCookies(
 export async function tryRefreshToken(
   refreshToken: string
 ): Promise<string | null> {
-  let decoded: any = null;
+  const { decoded } = verifyJwt(refreshToken);
 
-  try {
-    decoded = jwt.verify(refreshToken, process.env.JWT_SECRET!);
-  } catch (err) {
-    console.error(`!! failed to verify refreshToken`, err);
-    return null;
-  }
+  if (!decoded) return null;
 
-  const {
-    rows: [session],
-    rowCount,
-  } = await pool.query({
-    text: `select * from sessions where session_token = $1 and valid = true;`,
-    values: [decoded?.sessionId],
-  });
+  const session = await findValidSession(decoded?.sessionId);
 
-  if (rowCount === 0) {
-    console.error(
-      `!! valid session not found for this refreshToken ${refreshToken}`
-    );
-    return null;
-  }
+  if (!session) return null;
 
   return createAccessToken(session.session_token, session.user_id);
 }
@@ -78,7 +62,7 @@ function createAccessToken(sessionToken: string, userId: string) {
       userId: userId,
     },
     process.env.JWT_SECRET!,
-    { algorithm: JWT_ALGO, expiresIn: "1h" }
+    { algorithm: JWT_ALGO, expiresIn: "10s" }
   );
 }
 
@@ -98,4 +82,29 @@ export async function hashPassword(plainPassword: string) {
   const hashedPassword = await bcryptjs.hash(plainPassword, salt);
 
   return hashedPassword;
+}
+
+export function verifyJwt(token: string): {
+  decoded: null | any;
+  expired: boolean;
+} {
+  try {
+    let decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
+    return {
+      decoded,
+      expired: false,
+    };
+  } catch (err: any) {
+    if (err.name === JwtErrors.Expired) {
+      return {
+        decoded: null,
+        expired: true,
+      };
+    }
+
+    return {
+      decoded: null,
+      expired: false,
+    };
+  }
 }
